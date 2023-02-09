@@ -1,0 +1,698 @@
+---
+title: "Kent's Observations 2022"
+author: "Kent"
+date: "`r Sys.Date()`"
+output: bookdown::html_document2
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, cache = TRUE)
+library(tidyverse)
+library(plotly)
+library(ggthemes)
+library(gganimate)
+library(gifski)
+library(mapview) # for interactive maps
+library(sf)
+library(RColorBrewer)
+```
+
+```{r get obs}
+rm(list = ls())
+obs <- read.csv("C:/Users/kent_/OneDrive - University of New Brunswick/Documents/myObs/data/kentObs20230117.csv")
+
+
+```
+
+```{r data manipulation}
+obs$observed_on <- as.Date(obs$observed_on)
+
+obs22 <- obs %>% 
+  filter(observed_on > "2021-12-31" & observed_on < "2023-01-01" & taxon_species_name != "")
+
+dfFauna <- obs22 %>% 
+  filter(taxon_subphylum_name == "Vertebrata" & quality_grade == "research")
+
+
+```
+
+
+```{r values}
+# observations for 2022
+nObs22 <- nrow(obs22)
+
+# observations for 2021
+nObs21 <- obs %>% 
+  filter(observed_on > "2020-12-31" & observed_on < "2022-01-01" & taxon_species_name != "") %>% 
+  nrow()
+
+# percent change from 2021 to 2022
+perChgYr <- (nObs22-nObs21)/nObs21*100
+perChgYr <- round(perChgYr, digits = 0)
+
+
+# number of research grade
+nObs22RG <- obs22 %>% 
+  filter(quality_grade == "research") %>% 
+  nrow()
+
+# percentage research grade
+perRG22 <- nObs22RG/nObs22*100
+perRG22 <- round(perRG22, digits = 0)
+
+# unique species in 2022
+nUni22 <- obs22 %>% 
+  group_by(taxon_species_name) %>% 
+  filter(row_number() == 1) %>% 
+  nrow()
+
+# unique species in 2021
+nUni21 <- obs %>% 
+  filter(observed_on > "2020-12-31" & observed_on < "2022-01-01" & taxon_species_name != "") %>% 
+  group_by(taxon_species_name) %>% 
+  filter(row_number() == 1) %>% 
+  nrow()
+
+# percentage change from previous year
+spPerChg <- (nUni22 - nUni21)/nUni21*100
+spPerChg <- round(spPerChg, digits = 0)
+
+# number of countries
+nCountry <- obs22 %>% 
+  filter(place_country_name != "") %>% 
+  group_by(place_country_name) %>% 
+  summarize(N = n()) %>% 
+  nrow()
+
+# number of provinces
+nProvince <- obs22 %>%
+  filter(place_country_name == "Canada"
+         & place_admin1_name != ""
+         ) %>%
+  group_by(place_admin1_name) %>%
+  summarize(N = n()) %>%
+  nrow()
+
+# percentage from verts
+nVert22 <- obs22 %>% 
+  filter(taxon_subphylum_name == "Vertebrata") %>% 
+  nrow()
+perVerts <- nVert22/nObs22*100
+perVerts <- round(perVerts, digits = 0)
+
+# number of lifers 2022
+nLifer22 <- obs %>%
+  filter(taxon_species_name != "") %>% 
+  group_by(taxon_species_name) %>% 
+  filter(row_number() == 1) %>% 
+  filter(observed_on > "2021-12-31" & observed_on < "2023-01-01") %>% 
+  nrow()
+
+# number of lifers 2021
+nLifer21 <- obs %>%
+  filter(taxon_species_name != "") %>% 
+  group_by(taxon_species_name) %>% 
+  filter(row_number() == 1) %>% 
+  filter(observed_on > "2020-12-31" & observed_on < "2022-01-01") %>% 
+  nrow()
+  
+# percentage change in lifers
+perChgLifer <- (nLifer22 - nLifer21)/nLifer21*100
+perChgLifer <- round(perChgLifer)
+
+
+
+
+```
+
+![Black-crowned night heron (*Nycticorax nycticorax*)](images/P1153647.jpg)
+
+# General
+
+In the year 2022, I recorded a personal record number of observations and species. I recorded `r nObs22` observations representing an increase of `r perChgYr`% from my previous record in 2021, of which `r perRG22`% are research grade, meaning their identification has been confirmed by a third party. Of my `r nObs22` observations in 2022, `r nUni22` were unique species. The `r nUni22` unique species from 2022 is also a personal record for me and represents a `r spPerChg`% increase from my previous record in 2021. My observations in 2022 came from `r nCountry` country, and `r nProvince` provinces. In 2022, I continued to focus on the subphylem vertebrata clade of which `r perVerts`% of my observations came from. In 2022, I had `r nLifer22` lifers (first time observed in my life) which was `r perChgLifer`% higher than 2021.
+
+# Geography
+
+All of my observations from 2022 were located within `r nProvince` provinces in Canada. **Figure 1** shows the locations of my observations by kingdom from 2022. The observations are labelled with the common names of the organism observed. Time observed and the taxonomy of the observation can be viewed by clicking on the observation.
+
+As shown in **Figure 1**, most of my observations were concentrated in specific regions including Tommy Thompson Park in Toronto, Ontario, and Meadowbrook in Titusville, New Brunswick.
+
+**Figure 1**
+```{r observation_map}
+observations <- obs22 %>% 
+  dplyr::select(longitude, latitude,
+         time_observed_at,
+         taxon_kingdom_name, taxon_phylum_name, taxon_class_name,
+         taxon_order_name, taxon_family_name, taxon_genus_name,
+         taxon_species_name,
+         common_name, quality_grade, taxon_geoprivacy) %>% 
+  filter(!is.na(latitude))
+
+observations <- observations %>% 
+  rename(kingdom = taxon_kingdom_name, phylum = taxon_phylum_name, `class` = taxon_class_name,
+        `order` = taxon_order_name, family = taxon_family_name, genus = taxon_genus_name,
+        species = taxon_species_name)
+
+
+observations <- st_as_sf(x = observations, 
+                         coords = c("longitude", "latitude"),
+                         crs = "+proj=longlat +datum=WGS84")
+
+mapview(observations,
+        zcol = "kingdom",
+        label = "common_name",
+        legend = TRUE,
+        legend.name = c("kingdom"))
+
+rm(observations)
+```
+
+```{r county_species}
+
+# Toronto
+toronto <- obs22 %>% 
+  filter(place_admin2_name == "Toronto") %>% 
+  group_by(taxon_species_name) %>% 
+  filter(row_number() == 1) %>% 
+  nrow()
+  
+# Kings County
+kings <- obs22 %>% 
+  filter(place_admin2_name == "Kings") %>% 
+  group_by(taxon_species_name) %>% 
+  filter(row_number() == 1) %>% 
+  nrow()
+
+
+```
+
+
+**Figure 2** show the number of species observed in each province, and in each county within the province. By sliding the by from left to right, the view can be altered from the county to province level. Both in Ontario and New Brunswick, the species I observe are concentrated around large bodies of water. Living in Toronto, Ontario, most of the species occur around the north shore of Lake Ontario, with a few further north and further west. Toronto is the county with the most species at `r toronto`. In New Brunswick, the most of the species I observe are near the Bay of Fundy. Kings County (where I spent the summer at my brother Blake's house) has the highest concentration of species I observed at `r kings`.
+
+**Figure 2**
+```{r chloropleth_map}
+
+# Unique species
+species <- obs22 %>% 
+  filter(place_country_name == "Canada"
+         & place_admin1_name != ""
+         ) %>%
+  group_by(place_admin1_name, taxon_species_name) %>% 
+  filter(row_number() == 1) %>% 
+  group_by(place_admin1_name) %>% 
+  summarize(species = n())
+
+library(raster)
+province <- getData("GADM", country = "CAN", level = 1)
+
+Province <- merge(x = province, y = species,
+                by.x = "NAME_1", by.y = "place_admin1_name",
+                all.x = FALSE, all.y = TRUE)
+
+Province <- as(Province, "sf")
+
+pal <- colorRampPalette(brewer.pal(9, "YlOrRd"))
+
+Province <- mapview(Province,
+        zcol = "species",
+        col.regions = pal)
+
+# Unique species
+species <- obs22 %>% 
+  filter(place_country_name == "Canada"
+         & place_admin2_name != ""
+         ) %>%
+  group_by(place_admin2_name, taxon_species_name) %>% 
+  filter(row_number() == 1) %>% 
+  group_by(place_admin2_name) %>% 
+  summarize(species = n())
+
+
+county <- getData("GADM", country = "CAN", level = 2)
+
+County <- merge(x = county, y = species,
+                by.x = "NAME_2", by.y = "place_admin2_name",
+                all.x = FALSE, all.y = TRUE)
+
+
+County <- County %>% 
+  subset(NAME_1 != "Nova Scotia" & NAME_1 != "Prince Edward Island")
+
+County <- as(County, "sf")
+
+
+
+County <- mapview(County,
+        zcol = "species",
+        col.regions = pal)
+
+Province | County
+
+```
+
+
+# Species of interest
+
+
+Although I try observe a variety of species, there are some that are more abundant, easier to photograph, and that I prefer photographing. **Figure 3**, shows my most commonly observed species throughout the year.
+
+
+**Figure 3**
+
+```{r racing_bar_chart}
+observed_on <- seq(as.Date("2022-01-01"), as.Date("2022-12-31"), by="days")
+observed_on <- as.data.frame(observed_on)
+
+dfTax <- obs22 %>%
+  filter(quality_grade == "research" & taxon_species_name != "") %>% 
+  group_by(taxon_species_name) %>% 
+  filter(row_number() == 1) %>% 
+  dplyr::select(taxon_kingdom_name, taxon_phylum_name, taxon_subphylum_name,
+                taxon_class_name, taxon_order_name, taxon_family_name,
+                taxon_genus_name, taxon_species_name, common_name)
+
+
+df2 <- merge(observed_on, dfTax)
+
+dfObs22 <- obs22 %>%
+  filter(quality_grade == "research" & taxon_species_name != "") %>%
+  mutate(observation = 1)
+
+dfObs <- merge(df2, dfObs22,
+             by = c("taxon_kingdom_name", "taxon_phylum_name", "taxon_subphylum_name",
+                    "taxon_class_name", "taxon_order_name", "taxon_family_name",
+                    "taxon_genus_name", "taxon_species_name", "observed_on", "common_name"),
+             all.x = TRUE, all.y = TRUE)
+rm(df2, observed_on)
+
+dfObs <- dfObs %>% 
+  mutate(observations = ifelse(is.na(observation), 0, 1))
+
+dfObs <- dfObs %>% 
+  group_by(taxon_species_name) %>% 
+  arrange(observed_on) %>% 
+  mutate(species_cum = cumsum(observations)) %>% 
+  group_by(taxon_species_name, observed_on) %>% 
+  filter(max(species_cum) == species_cum) %>% 
+  arrange(observed_on, desc(species_cum))
+
+
+
+race <- dfObs %>%
+  group_by(observed_on) %>%
+  arrange(observed_on, -species_cum) %>%
+  mutate(rank = 1:n()) %>%
+  filter(rank <= 20 & species_cum > 0 & observed_on < "2022-12-01")
+
+
+
+static <- race %>% 
+  ggplot(mapping = aes(x = rank, group=common_name,
+                       fill = as.factor(taxon_family_name),
+                       colour = as.factor(taxon_family_name))) +
+  geom_tile(mapping = aes(y = species_cum/2,
+                          height = species_cum,
+                          width = 0.9),
+            alpha = 0.8,
+            colour = NA) +
+  # text in x-axis (requires clip = "off" in coord_*)
+  # paste(country, " ") is a hack to make pretty spacing since hjust > 1
+  # leads to weird artifacts in text spacing.
+  geom_text(mapping = aes(y = 0, label = paste(common_name, " ")), vjust = 0.2, hjust = 1) +
+  coord_flip(clip = "off", expand = FALSE) +
+  scale_y_continuous(labels = scales::comma) +
+  scale_x_reverse() +
+  guides(fill=guide_legend(title="family"), colour = "none") +
+  # guides(colour = "none", fill = "none") +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0, size = 22),
+        axis.ticks.y = element_blank(), # This relates to the axis post flip
+        axis.text.y = element_blank(), # This relates to the axis post flip
+        plot.margin = margin(1,1,1,4, "cm"))
+
+animated <- static +
+  transition_states(observed_on, transition_length = 1000, state_length = 0, wrap = FALSE) +
+  view_follow(fixed_x = TRUE) +
+  ease_aes('linear') +
+  enter_drift() +
+  exit_drift() +
+  labs(title = 'Number of Species: {closest_state}', x = "", y = "Species Count")
+detach("package:raster", unload = TRUE) # raster masks stuff sometimes
+animate(animated
+        # , nframes = 150
+        , fps = 10
+        , width = 800
+        , height = 500
+        , duration = 100
+        , end_pause = 20
+        # , renderer = gifski_renderer("plots/anim_sp.gif")
+        )
+
+
+
+```
+
+For the first few month of the year, my most observed species included animals that winter in the regions I'm from. These include animals such as red-tailed hawks (*Buteo jamacensis*), and black-capped chickadees (*Poecile atricapillus*). In the spring, I started to observe more species that migrate to Canada during their summer breeding season including song sparrows (*Melospiza melodia*), and the tree swallow (*Tachycineta bicolor*).
+
+![Red-Tailed Hawk (*Buteo jamacensis*)](images/P1324667.jpg){width=400px} ![Black-Capped Chickadee (*Poecile atricapillus*)](images/P1325249.jpg){width=400px}
+
+![Song Sparrow (*Melospiza melodia*)](images/P1152292.jpg){width=400px} ![Tree swallow (*Tachycineta bicolor*)](images/P1106179.jpg){width=400px}
+
+```{r ruby-throated_hummingbird_obs}
+# Hummers
+hummers <- obs22 %>% 
+  filter(taxon_species_name == "Archilochus colubris") %>% 
+  nrow()
+
+# Kings Hummers
+kHum <- obs22 %>% 
+  filter(taxon_species_name == "Archilochus colubris" & place_admin2_name == "Kings") %>% 
+  nrow()
+
+# Percentage hummers from Kings County
+perKingsHum <- kHum/hummers*100
+perKingsHum <- round(perKingsHum, digits = 0)
+
+```
+
+
+By the end of summer my most observed species was the ruby-throated hummingbird (*Archilochus colubris*) with `r hummers` observations. Although I was able to observe many of these energetic birds throughout different parts of Ontario, the vast majority of my hummingbird observations (`r perKingsHum`%) came from Kings County, New Brunswick. In addition to there being several people feeding them around his house, the flower filled field, and stream make for ideal ruby-throated hummingbird habitat.
+
+
+![Ruby-Throated Hummingbird (*Archilochus colubris*)](images/P1176761_01.jpg){width=400px} ![Ruby-Throated Hummingbird (*Archilochus colubris*)](images/P1234101.jpg){width=400px}
+ 
+![Ruby-Throated Hummingbird (*Archilochus colubris*)](images/P1234210.jpg){width=400px} ![Ruby-Throated Hummingbird (*Archilochus colubris*)](images/P1234288.jpg){width=400px}
+
+
+# Popular clades
+
+Notably, from the racing bar chart above, all of my top 20 most observed species in 2022 were birds. I have a preference for observing animals (particularly vertebrates), mammals are often nocturnal, fish are more difficult to observe because they often live underwater, and, being exothermic, there tends to be fewer species reptiles and amphibians in the parts of Canada I visited in 2022. The following racing bar chart shows the number of species observed by class.
+
+**Figure 4**
+
+```{r class_racing_bar}
+# Get all of the days
+observed_on <- seq(as.Date("2022-01-01"), as.Date("2022-12-31"), by="days")
+observed_on <- as.data.frame(observed_on)
+
+# Get all of the unique species
+dfTax <- obs22 %>%
+  filter(quality_grade == "research" & taxon_species_name != "") %>% 
+  group_by(taxon_species_name) %>% 
+  filter(row_number() == 1) %>% 
+  dplyr::select(taxon_kingdom_name, taxon_phylum_name, taxon_subphylum_name,
+                taxon_class_name, taxon_order_name, taxon_family_name,
+                taxon_genus_name, taxon_species_name, common_name)
+
+
+df2 <- merge(observed_on, dfTax)
+
+dfObs22 <- obs22 %>%
+  filter(quality_grade == "research" & taxon_species_name != "") %>%
+  group_by(taxon_species_name) %>% 
+  filter(row_number() == 1) %>% 
+  mutate(observation = 1)
+
+dfObs <- merge(df2, dfObs22,
+             by = c("taxon_kingdom_name", "taxon_phylum_name", "taxon_subphylum_name",
+                    "taxon_class_name", "taxon_order_name", "taxon_family_name",
+                    "taxon_genus_name", "taxon_species_name", "observed_on", "common_name"),
+             all.x = TRUE, all.y = TRUE)
+# rm(df2, observed_on)
+
+dfObs <- dfObs %>% 
+  mutate(observations = ifelse(is.na(observation), 0, 1))
+
+dfObs <- dfObs %>% 
+  group_by(taxon_class_name) %>% 
+  arrange(observed_on) %>% 
+  mutate(class_cum = cumsum(observations)) %>% 
+  group_by(taxon_class_name, observed_on) %>% 
+  arrange(-class_cum) %>% 
+  filter(row_number() == 1) %>% 
+  arrange(observed_on, desc(class_cum)) %>% 
+  dplyr::select(taxon_phylum_name, taxon_class_name, observed_on, class_cum) %>% 
+  group_by(taxon_class_name, observed_on)
+
+
+
+race <- dfObs %>%
+  group_by(observed_on) %>%
+  arrange(observed_on, -class_cum) %>%
+  mutate(rank = 1:n()) %>%
+  filter(rank <= 20 & class_cum > 0)
+
+
+
+static <- race %>% 
+  ggplot(mapping = aes(x = rank, group=taxon_class_name,
+                       fill = as.factor(taxon_phylum_name),
+                       colour = as.factor(taxon_phylum_name))) +
+  geom_tile(mapping = aes(y = class_cum/2,
+                          height = class_cum,
+                          width = 0.9),
+            alpha = 0.8,
+            colour = NA) +
+  # text in x-axis (requires clip = "off" in coord_*)
+  # paste(country, " ") is a hack to make pretty spacing since hjust > 1
+  # leads to weird artifacts in text spacing.
+  geom_text(mapping = aes(y = 0, label = paste(taxon_class_name, " ")), vjust = 0.2, hjust = 1) +
+  coord_flip(clip = "off", expand = FALSE) +
+  scale_y_continuous(labels = scales::comma) +
+  scale_x_reverse() +
+  guides(fill=guide_legend(title="phylum"), colour = "none") +
+  # guides(colour = "none", fill = "none") +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0, size = 22),
+        axis.ticks.y = element_blank(), # This relates to the axis post flip
+        axis.text.y = element_blank(), # This relates to the axis post flip
+        plot.margin = margin(1,1,1,4, "cm"))
+
+animated <- static +
+  transition_states(observed_on, transition_length = 1000, state_length = 0, wrap = FALSE) +
+  view_follow(fixed_x = TRUE) +
+  ease_aes('linear') +
+  enter_drift() +
+  exit_drift() +
+  labs(title = 'Number of Species by class: {closest_state}', x = "", y = "Species Count")
+detach("package:raster", unload = TRUE) # raster masks stuff sometimes
+animate(animated
+        # , nframes = 150
+        , fps = 10
+        , width = 800
+        , height = 500
+        , duration = 100
+        , end_pause = 20
+        # , renderer = gifski_renderer("plots/anim_sp.gif")
+        )
+
+
+
+
+```
+```{r species_by_class}
+# Aves
+aves <- obs22 %>% 
+  filter(taxon_class_name == "Aves") %>% 
+  group_by(taxon_species_name) %>% 
+  filter(row_number() == 1) %>% 
+  nrow()
+
+# Insecta
+insecta <- obs22 %>% 
+  filter(taxon_class_name == "Insecta") %>% 
+  group_by(taxon_species_name) %>% 
+  filter(row_number() == 1) %>% 
+  nrow()
+
+# Magnoliopsida
+magnoliopsida <- obs22 %>% 
+  filter(taxon_class_name == "Magnoliopsida") %>% 
+  group_by(taxon_species_name) %>% 
+  filter(row_number() == 1) %>% 
+  nrow()
+
+# Mammalia
+mammalia <- obs22 %>% 
+  filter(taxon_class_name == "Mammalia") %>% 
+  group_by(taxon_species_name) %>% 
+  filter(row_number() == 1) %>% 
+  nrow()
+
+```
+
+I observed the most species from the Aves class with `r aves`, followed by Insecta with `r insecta`, Magnoliopsida with `r magnoliopsida`, and Mammalia with `r mammalia`.
+
+
+![Wood Duck (*Aix sponsa*)](images/P1301824.jpg){width=400px} ![Monarch (*Danaus plexippus*)](images/P1278328.jpg){width=400px}
+ 
+![Painted-cup Paintbrush (*Castilleja coccinea*)](images/P1152912.jpg){width=400px} ![Common Raccoon (*Procyon lotor*)](images/P1070791.jpg){width=400px}
+
+# Variety
+
+In 2022 I observed more species than any other year at `r nUni22`. To represent the diversity of the species observed I use the following phylogeny trees. The root of each tree represents a kingdom, with the leaves representing species. The thickness of the edges and nodes of the tree correspond to the number of operational taxonomic units (OTUs) observed.
+
+**Figure 5**
+
+```{r phylogenic tree, dpi=300}
+library(metacoder)
+library(taxa)
+
+class22 <- obs22 %>%
+  filter(taxon_species_name != "" & !is.na(taxon_species_name)) %>% 
+  mutate(taxon_species_name = sub("^\\S+\\s+", '', taxon_species_name)) %>%
+  mutate(class = paste(taxon_kingdom_name, ";",
+                       taxon_phylum_name, ";",
+                       taxon_class_name, ";",
+                       taxon_order_name, ";",
+                       taxon_family_name, ";",
+                       taxon_genus_name, ";",
+                       taxon_species_name)) %>% 
+  dplyr::select(class)
+
+
+tax22 <- parse_tax_data(class22,
+                        # class_cols = "class",
+                        class_sep = ";")
+
+
+
+set.seed(4)
+tax22 %>% 
+  # taxa::filter_taxa(taxon_names != "") %>%
+  heat_tree(node_label = taxon_names,
+            node_size = n_obs,
+            node_color = n_supertaxa,
+            tree_label = taxon_names,
+            layout = "da",
+            title = "Tree of observations",
+            node_color_axis_label = "Number of supertaxa",
+            node_size_axis_label = "Number of OTUs")
+
+# ggplotly(plt)
+
+
+```
+
+```{r descriptive_on_trees}
+# Number of trees
+trees <- obs22 %>% 
+  group_by(taxon_kingdom_name) %>% 
+  filter(row_number() == 1) %>% 
+  nrow()
+
+# Number of animal species
+animalia <- obs22 %>% 
+  filter(taxon_kingdom_name == "Animalia") %>% 
+  group_by(taxon_species_name) %>% 
+  filter(row_number() == 1) %>% 
+  nrow()
+
+# Number of animal obs
+animaliaObs <- obs22 %>% 
+  filter(taxon_kingdom_name == "Animalia") %>% 
+  nrow()
+
+# Number of plant species
+plantae <- obs22 %>% 
+  filter(taxon_kingdom_name == "Plantae") %>% 
+  group_by(taxon_species_name) %>% 
+  filter(row_number() == 1) %>% 
+  nrow()
+
+# Number of plant obs
+plantaeObs <- obs22 %>% 
+  filter(taxon_kingdom_name == "Plantae") %>% 
+  nrow()
+
+
+# Number of protozone obs
+protozoaObs <- obs22 %>% 
+  filter(taxon_kingdom_name == "Protozoa") %>% 
+  nrow()
+
+# Protozoa common name
+protozoa <- obs22 %>% 
+  filter(taxon_kingdom_name == "Protozoa")
+protozoaCN <- protozoa$common_name
+protozoaSN <- protozoa$taxon_species_name
+
+
+```
+
+
+There are `r trees` trees in the diagram reprenting the kingdoms Animalia, Plantae, Fungi, Chromista, and Protozoa. Animalia is by far the largest tree with `r animalia` species, and `r animaliaObs` of observations, followed by Plantae with `r plantae` species, and `r plantaeObs` observations. Protozoa is the smallest tree with `r protozoaObs` observation, `r protozoaCN` (*`r protozoaSN`*).
+
+![Dog Vomit Slime Mould (*Fuligo septica*)](images/PXL_20220709_175239018.jpg)
+
+# Lifers
+
+```{r lifers}
+# Animal lifers
+animaliaLifers <- obs %>% 
+  filter(taxon_kingdom_name == "Animalia") %>% 
+  group_by(taxon_species_name) %>% 
+  arrange(observed_on) %>% 
+  filter(row_number() == 1) %>% 
+  filter(observed_on > as.Date("2021-12-31") & observed_on < as.Date("2023-01-01")) %>% 
+  nrow()
+
+# Plant lifers
+plantaeLifers <- obs %>% 
+  filter(taxon_kingdom_name == "Plantae") %>% 
+  group_by(taxon_species_name) %>% 
+  arrange(observed_on) %>% 
+  filter(row_number() == 1) %>% 
+  filter(observed_on > as.Date("2021-12-31") & observed_on < as.Date("2023-01-01")) %>% 
+  nrow()
+
+# Fungi lifers
+fungiLifers <- obs %>% 
+  filter(taxon_kingdom_name == "Fungi") %>% 
+  group_by(taxon_species_name) %>% 
+  arrange(observed_on) %>% 
+  filter(row_number() == 1) %>% 
+  filter(observed_on > as.Date("2021-12-31") & observed_on < as.Date("2023-01-01")) %>% 
+  nrow()
+
+# Chromista lifers
+chromistaLifers <- obs %>% 
+  filter(taxon_kingdom_name == "Chromista") %>% 
+  group_by(taxon_species_name) %>% 
+  arrange(observed_on) %>% 
+  filter(row_number() == 1) %>% 
+  filter(observed_on > as.Date("2021-12-31") & observed_on < as.Date("2023-01-01")) %>% 
+  nrow()
+
+# Protozoa lifers
+protozoaLifers <- obs %>% 
+  filter(taxon_kingdom_name == "Protozoa") %>% 
+  group_by(taxon_species_name) %>% 
+  arrange(observed_on) %>% 
+  filter(row_number() == 1) %>% 
+  filter(observed_on > as.Date("2021-12-31") & observed_on < as.Date("2023-01-01")) %>% 
+  nrow()
+
+
+```
+
+
+In 2022 I had `r nLifer22` lifers. Of these lifer `r animaliaLifers` came from the Animalia kingdom, NUMBER from the `r plantaeLifers` kingdom, `r fungiLifers` from the Fungi kingdom, `r chromistaLifers` from the Chromista kingdom, and `r protozoaLifers` from the Protozoa kingdom. Some notable lifers for me include the prothonotary warbler (*Protonotaria citrea*), blandings turtle (*Emydoidea blandingii*), spruce zebra beetle (*Xylotrechus undulatus*), and the short-earred owl (*Asio flammeus*) .
+
+
+
+
+Figure out how to find rares observations by region (Maybe extract summary statistics somehow).
+
+
+![Prothonotary Warbler (*Protonotaria citrea*)](images/P1129973_01.jpg){width=400px} ![Short-Eared Owl (*Asio flammeus*)](images/P1022361.jpg){width=400px}
+ 
+![Brown Thrasher (*Toxostoma rufum*)](images/P1349142_01.jpg){width=400px} ![Blanding's Turtle (*Emydoidea blandingii*)](images/P1153523.jpg){width=400px}
+
+# Focus for 2023
+
+In 2022 I continued to focus heavily on vertebrates in Canada. In 2023, I'd like to expand my focus and observe more species of invertebrates, and organisms outside of the animal kingdom. I would also like to expand my focus geographically, and observe species from outside of Canada.
+
+![Orange Sulphur (*Colia eurytheme*)](images/P1301281.jpg){width=400px} ![Bald-faced Hornet Fly (*Spilomyia fusca*)](images/P1244689.jpg){width=400px}
+ 
+![Ebony Jewelwing (*Calopteryx maculata*)](images/P1165941.jpg){width=400px} ![Lance-tipped Darner (*Aeshna constricta*)](images/P1222995.jpg){width=400px}
